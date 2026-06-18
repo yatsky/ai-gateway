@@ -7,6 +7,27 @@ import (
 	"net/http"
 
 	aigateway "github.com/ferro-labs/ai-gateway"
+
+// headResponseWriter wraps http.ResponseWriter to discard the body on HEAD
+// requests while preserving headers and status code.
+type headResponseWriter struct {
+	http.ResponseWriter
+	headersWritten bool
+}
+
+func (w *headResponseWriter) Write(b []byte) (int, error) {
+	if !w.headersWritten {
+		w.WriteHeader(http.StatusOK)
+	}
+	return len(b), nil // discard body, report all bytes as written
+}
+
+func (w *headResponseWriter) WriteHeader(code int) {
+	if !w.headersWritten {
+		w.headersWritten = true
+		w.ResponseWriter.WriteHeader(code)
+	}
+}
 	"github.com/ferro-labs/ai-gateway/internal/admin"
 	"github.com/ferro-labs/ai-gateway/internal/apierror"
 	"github.com/ferro-labs/ai-gateway/internal/dashboard"
@@ -63,6 +84,18 @@ func NewRouter(
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.RealIP)
 	r.Use(middleware.CORS(corsOrigins...))
+
+	// Convert HEAD requests to GET so chi's r.Get() routes match.
+	// Needed for lzcinit health checks which use HEAD.
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodHead {
+				r.Method = http.MethodGet
+				w = &headResponseWriter{ResponseWriter: w}
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
 
 	// Optional per-IP rate limiting middleware.
 	if rlStore != nil {
