@@ -17,6 +17,7 @@ import (
 )
 
 var pageTemplates = make(map[string]*template.Template)
+var pageTemplatesZH = make(map[string]*template.Template)
 
 func init() {
 	pages := []string{
@@ -24,6 +25,7 @@ func init() {
 		"providers", "config", "analytics", "playground",
 	}
 	for _, page := range pages {
+		// English templates
 		tmpl, err := template.ParseFS(webassets.Assets,
 			"templates/layout.html",
 			"templates/pages/"+page+".html",
@@ -32,17 +34,63 @@ func init() {
 			panic("failed to parse template " + page + ": " + err.Error())
 		}
 		pageTemplates[page] = tmpl
+
+		// Chinese (zh-CN) templates
+		tmplZH, err := template.ParseFS(webassets.Assets,
+			"templates/layout-zh.html",
+			"templates/pages/"+page+".html",
+		)
+		if err != nil {
+			panic("failed to parse zh-CN template " + page + ": " + err.Error())
+		}
+		pageTemplatesZH[page] = tmplZH
 	}
+}
+
+// DetectLang returns "zh" if the request prefers Chinese, otherwise "en".
+func DetectLang(r *http.Request) string {
+	// URL parameter overrides
+	if lang := r.URL.Query().Get("lang"); lang != "" {
+		if strings.HasPrefix(lang, "zh") {
+			return "zh"
+		}
+		return "en"
+	}
+	// Accept-Language header
+	al := r.Header.Get("Accept-Language")
+	if strings.Contains(al, "zh") {
+		return "zh"
+	}
+	return "en"
 }
 
 // RenderWebTemplate writes the named page template to w.
 func RenderWebTemplate(w http.ResponseWriter, pageName string, data any) error {
+	return RenderWebTemplateLang(w, pageName, data, "")
+}
+
+// RenderWebTemplateLang writes the named page template to w in the given language.
+// If lang is empty, it auto-detects from the request (via w).
+func RenderWebTemplateLang(w http.ResponseWriter, pageName string, data any, lang string) error {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	tmpl, ok := pageTemplates[pageName]
+	if lang == "" {
+		lang = "en" // default; caller should use RenderWebTemplateLang with auto-detect
+	}
+	var tmpl *template.Template
+	var ok bool
+	if lang == "zh" {
+		tmpl, ok = pageTemplatesZH[pageName]
+	} else {
+		tmpl, ok = pageTemplates[pageName]
+	}
 	if !ok {
 		return fmt.Errorf("unknown page template: %s", pageName)
 	}
-	return tmpl.ExecuteTemplate(w, "layout.html", data)
+	layoutName := "layout.html"
+	if lang == "zh" {
+		layoutName = "layout-zh.html"
+	}
+	return tmpl.ExecuteTemplate(w, layoutName, data)
 }
 
 // MountPprofRoutes registers /debug/pprof/* routes on r when ENABLE_PPROF is set.

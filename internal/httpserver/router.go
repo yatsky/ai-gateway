@@ -25,7 +25,16 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-var loginTemplate = template.Must(template.ParseFS(webassets.Assets, "templates/login.html"))
+var loginTemplateEN = template.Must(template.ParseFS(webassets.Assets, "templates/login.html"))
+var loginTemplateZH *template.Template
+
+func init() {
+	// Try to load the zh-CN login template; fall back to EN if not present.
+	tmpl, err := template.ParseFS(webassets.Assets, "templates/login-zh.html")
+	if err == nil {
+		loginTemplateZH = tmpl
+	}
+}
 
 // NewRouter builds the HTTP router for the gateway.
 func NewRouter(
@@ -112,9 +121,14 @@ type pageData struct {
 	Version    string
 }
 
-func renderPage(w http.ResponseWriter, page, title string) {
+func renderPage(w http.ResponseWriter, r *http.Request, page, titleEN, titleZH string) {
+	lang := dashboard.DetectLang(r)
+	title := titleEN
+	if lang == "zh" && titleZH != "" {
+		title = titleZH
+	}
 	data := pageData{ActivePage: page, PageTitle: title, Version: version.Short()}
-	if err := dashboard.RenderWebTemplate(w, page, data); err != nil {
+	if err := dashboard.RenderWebTemplateLang(w, page, data, lang); err != nil {
 		apierror.WriteOpenAI(w, http.StatusInternalServerError, "failed to render dashboard", "server_error", "internal_error")
 	}
 }
@@ -123,34 +137,38 @@ func mountDashboardRoutes(r chi.Router) {
 	r.Get("/dashboard", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/dashboard/getting-started", http.StatusFound)
 	})
-	r.Get("/dashboard/getting-started", func(w http.ResponseWriter, _ *http.Request) {
-		renderPage(w, "getting-started", "Getting Started")
+	r.Get("/dashboard/getting-started", func(w http.ResponseWriter, r *http.Request) {
+		renderPage(w, r, "getting-started", "Getting Started", "入门指南")
 	})
-	r.Get("/dashboard/overview", func(w http.ResponseWriter, _ *http.Request) {
-		renderPage(w, "overview", "Overview")
+	r.Get("/dashboard/overview", func(w http.ResponseWriter, r *http.Request) {
+		renderPage(w, r, "overview", "Overview", "概览")
 	})
-	r.Get("/dashboard/keys", func(w http.ResponseWriter, _ *http.Request) {
-		renderPage(w, "keys", "API Keys")
+	r.Get("/dashboard/keys", func(w http.ResponseWriter, r *http.Request) {
+		renderPage(w, r, "keys", "API Keys", "API 密钥")
 	})
-	r.Get("/dashboard/logs", func(w http.ResponseWriter, _ *http.Request) {
-		renderPage(w, "logs", "Request Logs")
+	r.Get("/dashboard/logs", func(w http.ResponseWriter, r *http.Request) {
+		renderPage(w, r, "logs", "Request Logs", "请求日志")
 	})
-	r.Get("/dashboard/providers", func(w http.ResponseWriter, _ *http.Request) {
-		renderPage(w, "providers", "Providers")
+	r.Get("/dashboard/providers", func(w http.ResponseWriter, r *http.Request) {
+		renderPage(w, r, "providers", "Providers", "提供商")
 	})
-	r.Get("/dashboard/config", func(w http.ResponseWriter, _ *http.Request) {
-		renderPage(w, "config", "Config")
+	r.Get("/dashboard/config", func(w http.ResponseWriter, r *http.Request) {
+		renderPage(w, r, "config", "Config", "配置")
 	})
-	r.Get("/dashboard/analytics", func(w http.ResponseWriter, _ *http.Request) {
-		renderPage(w, "analytics", "Analytics")
+	r.Get("/dashboard/analytics", func(w http.ResponseWriter, r *http.Request) {
+		renderPage(w, r, "analytics", "Analytics", "分析")
 	})
-	r.Get("/dashboard/playground", func(w http.ResponseWriter, _ *http.Request) {
-		renderPage(w, "playground", "Playground")
+	r.Get("/dashboard/playground", func(w http.ResponseWriter, r *http.Request) {
+		renderPage(w, r, "playground", "Playground", "试验场")
 	})
 
-	r.Get("/dashboard/login", func(w http.ResponseWriter, _ *http.Request) {
+	r.Get("/dashboard/login", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = loginTemplate.Execute(w, nil)
+		tmpl := loginTemplateEN
+		if dashboard.DetectLang(r) == "zh" && loginTemplateZH != nil {
+			tmpl = loginTemplateZH
+		}
+		_ = tmpl.Execute(w, nil)
 	})
 
 	// Serve static assets from embedded filesystem.

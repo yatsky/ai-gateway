@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>登录 — AI 网关</title>
+  <link rel="icon" href="/logo.png" />
+  <link rel="stylesheet" href="/dashboard/static/style.css" />
+  <style>
+    .login-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    .login-card {
+      max-width: 400px;
+      width: 100%;
+      padding: 2.5rem;
+      border-radius: 12px;
+      background: var(--card-bg, #fff);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+    .login-card h1 {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .login-card p {
+      color: var(--text-muted, #666);
+      margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+    }
+    .login-card input {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid var(--border, #ddd);
+      border-radius: 8px;
+      font-size: 1rem;
+      margin-bottom: 1rem;
+      box-sizing: border-box;
+    }
+    .login-card button {
+      width: 100%;
+      padding: 0.75rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      background: var(--primary, #f97316);
+      color: #fff;
+    }
+    .login-card button:hover { opacity: 0.9; }
+    .login-error {
+      color: var(--error, #ef4444);
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+      display: none;
+    }
+    .login-hint {
+      margin-top: 1.5rem;
+      padding: 1rem;
+      background: var(--hint-bg, #f8f9fa);
+      border-radius: 8px;
+      font-size: 0.8rem;
+      color: var(--text-muted, #666);
+    }
+    .login-hint code {
+      background: var(--code-bg, #e9ecef);
+      padding: 0.15rem 0.35rem;
+      border-radius: 4px;
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-card">
+      <h1>AI 网关</h1>
+      <p>请输入您的主密钥或 API 密钥以访问控制台。</p>
+      <div id="login-error" class="login-error"></div>
+      <form id="login-form">
+        <input id="login-key" type="password" placeholder="fgw_... 或您的 API 密钥" autocomplete="off" autofocus />
+        <button type="submit">登录</button>
+      </form>
+      <div class="login-hint">
+        还没有密钥？运行 <code>ferrogw init</code> 生成一个。
+      </div>
+    </div>
+  </div>
+  <script>
+    document.getElementById('login-form').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      var key = document.getElementById('login-key').value.trim();
+      var errEl = document.getElementById('login-error');
+      errEl.style.display = 'none';
+
+      if (!key) {
+        errEl.textContent = '请输入密钥。';
+        errEl.style.display = 'block';
+        return;
+      }
+
+      try {
+        var res = await fetch('/admin/health', {
+          headers: { 'Authorization': 'Bearer ' + key }
+        });
+        if (!res.ok) {
+          var data = await res.json().catch(function() { return {}; });
+          errEl.textContent = (data.error && data.error.message) || '密钥无效。';
+          errEl.style.display = 'block';
+          return;
+        }
+        var health = await res.json();
+        localStorage.setItem('gw-admin-key', key);
+        if (health.scopes) {
+          localStorage.setItem('gw-scopes', JSON.stringify(health.scopes));
+        }
+        window.location.href = '/dashboard/overview';
+      } catch (err) {
+        errEl.textContent = '无法连接到网关，是否已启动？';
+        errEl.style.display = 'block';
+      }
+    });
+
+    // 如果已登录则跳转
+    if (localStorage.getItem('gw-admin-key')) {
+      window.location.href = '/dashboard/overview';
+    }
+  </script>
+</body>
+</html>
