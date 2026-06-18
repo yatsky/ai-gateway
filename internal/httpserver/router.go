@@ -7,27 +7,6 @@ import (
 	"net/http"
 
 	aigateway "github.com/ferro-labs/ai-gateway"
-
-// headResponseWriter wraps http.ResponseWriter to discard the body on HEAD
-// requests while preserving headers and status code.
-type headResponseWriter struct {
-	http.ResponseWriter
-	headersWritten bool
-}
-
-func (w *headResponseWriter) Write(b []byte) (int, error) {
-	if !w.headersWritten {
-		w.WriteHeader(http.StatusOK)
-	}
-	return len(b), nil // discard body, report all bytes as written
-}
-
-func (w *headResponseWriter) WriteHeader(code int) {
-	if !w.headersWritten {
-		w.headersWritten = true
-		w.ResponseWriter.WriteHeader(code)
-	}
-}
 	"github.com/ferro-labs/ai-gateway/internal/admin"
 	"github.com/ferro-labs/ai-gateway/internal/apierror"
 	"github.com/ferro-labs/ai-gateway/internal/dashboard"
@@ -45,6 +24,27 @@ func (w *headResponseWriter) WriteHeader(code int) {
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+// headResponseWriter wraps http.ResponseWriter to discard the body on HEAD
+// requests while preserving headers and status code.
+type headResponseWriter struct {
+	http.ResponseWriter
+	wroteHeader bool
+}
+
+func (w *headResponseWriter) Write(b []byte) (int, error) {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	return len(b), nil
+}
+
+func (w *headResponseWriter) WriteHeader(code int) {
+	if !w.wroteHeader {
+		w.wroteHeader = true
+		w.ResponseWriter.WriteHeader(code)
+	}
+}
 
 var loginTemplateEN = template.Must(template.ParseFS(webassets.Assets, "templates/login.html"))
 var loginTemplateZH *template.Template
